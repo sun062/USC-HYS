@@ -13,9 +13,9 @@
         body { font-family: "Inter", "Malgun Gothic", sans-serif; }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+<body class="bg-gray-50 min-h-screen p-4">
 
-    <div id="app" class="w-full max-w-4xl bg-white shadow-2xl rounded-xl p-8 space-y-8">
+    <div id="app" class="w-full max-w-6xl mx-auto bg-white shadow-2xl rounded-xl p-8 space-y-8">
         <header class="text-center border-b pb-4">
             <h1 class="text-3xl font-extrabold text-indigo-700">Brainlink 데이터 자동 분석기</h1>
             <p class="text-gray-500 mt-1">원본 CSV/XLSX 파일을 업로드하여 시간별 데이터 및 통계 요약 보고서 생성</p>
@@ -81,9 +81,9 @@
         // 처리할 시계열 데이터 열의 헤더 목록 (쉼표로 구분되어 있는 열)
         const TIME_SERIES_HEADERS = [
             'Attention/注意力', 'Relaxation/放松度', 
-            'Delta/δ波', 'Theta/θ波', 'Low-Alpha/低α波', 'High-Alpha/高α波', 
-            'Low-Beta/低β波', 'High-Beta/高β波', 'Low-Gamma/低γ波', 'Mid-Gamma/高γ波',
-            'Appreciation/喜好度', 'MentalEffort/用脑度', 'Familarity/熟练度',
+            'Delta/δ波', 'Theta/θ波', 'Low-Alpha/저α波', 'High-Alpha/고α波', 
+            'Low-Beta/저β波', 'High-Beta/고β波', 'Low-Gamma/저γ波', 'Mid-Gamma/중γ波',
+            'Appreciation/喜好度', 'MentalEffort/용뇌도', 'Familarity/숙련도',
             // SyncRate는 보통 단일 값이지만, 혹시 시계열이면 처리합니다.
             'SyncRate/同步率'
         ];
