@@ -88,7 +88,7 @@ elif st.session_state.page == "index4":
 
 # 새로 추가된 페이지 경로 (index5)
 elif st.session_state.page == "index5":
-    html_file_path = os.path.join(current_dir, "htmls", "index4.html")
+    html_file_path = os.path.join(current_dir, "htmls", "index5.html")
     try:
         with open(html_file_path, "r", encoding="utf-8") as f:
             html_content = f.read()
@@ -100,7 +100,7 @@ elif st.session_state.page == "index5":
 
 # 새로 추가된 페이지 경로 (index6)
 elif st.session_state.page == "index6":
-    html_file_path = os.path.join(current_dir, "htmls", "index4.html")
+    html_file_path = os.path.join(current_dir, "htmls", "index6.html")
     try:
         with open(html_file_path, "r", encoding="utf-8") as f:
             html_content = f.read()
@@ -110,3 +110,4 @@ elif st.session_state.page == "index6":
     except Exception as e:
         st.error(f"HTML 파일을 불러오는 중 오류가 발생했습니다: {e}")
         
+
