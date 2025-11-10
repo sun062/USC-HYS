@@ -1,44 +1,80 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import os
 
-# Streamlit 앱 페이지 설정
+# Streamlit 페이지 설정
 st.set_page_config(
-    page_title="Brainlink EEG 데이터 분석기",
+    page_title="Brainlink 데이터 정리 프로그램",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
 )
 
-# HTML 파일이 위치한 경로를 설정합니다. (app.py와 같은 레벨의 htmls 폴더)
-HTML_FILE_PATH = os.path.join("htmls", "index.html")
+# 현재 스크립트 파일의 디렉토리 경로를 가져옵니다.
+current_dir = os.path.dirname(os.path.abspath(__file__))
 
-def load_html_content(file_path):
-    """
-    지정된 경로에서 HTML 파일의 내용을 읽어옵니다.
-    """
+# 사이드바에 버튼 추가
+st.sidebar.header("페이지 이동")
+if st.sidebar.button("Brainlink 데이터 정리 프로그램"):
+    st.session_state.page = "index1"
+
+if st.sidebar.button("카페인 유무 데이터 분리 프로그램"):
+    st.session_state.page = "index2"
+
+# 새로운 버튼 추가: "평균값 정리 프로그램"
+if st.sidebar.button("평균값 정리 프로그램"):
+    st.session_state.page = "index3"
+
+# 새로운 버튼 추가: "새로운 페이지 (index4)"
+if st.sidebar.button("뇌파 분석 프로그램"):
+    st.session_state.page = "index4"
+
+
+# 초기 페이지 상태 설정
+if "page" not in st.session_state:
+    st.session_state.page = "index1"
+
+# 선택된 페이지에 따라 HTML 파일 표시
+if st.session_state.page == "index1":
+    html_file_path = os.path.join(current_dir, "htmls", "index.html")
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(html_file_path, "r", encoding="utf-8") as f:
             html_content = f.read()
-        return html_content
+        st.components.v1.html(html_content, height=2000, scrolling=True)
     except FileNotFoundError:
-        return f"<h1>오류: HTML 파일을 찾을 수 없습니다. 경로를 확인해주세요: {file_path}</h1>"
+        st.error(f"오류: HTML 파일을 찾을 수 없습니다. '{html_file_path}' 경로를 확인해 주세요.")
     except Exception as e:
-        return f"<h1>HTML 파일을 읽는 중 오류 발생: {e}</h1>"
+        st.error(f"HTML 파일을 불러오는 중 오류가 발생했습니다: {e}")
 
-# HTML 내용을 로드합니다.
-html_content = load_html_content(HTML_FILE_PATH)
+elif st.session_state.page == "index2":
+    html_file_path = os.path.join(current_dir, "htmls", "index2.html")
+    try:
+        with open(html_file_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        st.components.v1.html(html_content, height=2000, scrolling=True)
+    except FileNotFoundError:
+        st.error(f"오류: HTML 파일을 찾을 수 없습니다. '{html_file_path}' 경로를 확인해 주세요.")
+    except Exception as e:
+        st.error(f"HTML 파일을 불러오는 중 오류가 발생했습니다: {e}")
 
-# Streamlit에 HTML 컴포넌트를 임베드합니다.
-# height는 HTML 내용에 맞게 적절히 조정했습니다.
-if "오류:" in html_content:
-    st.error(html_content)
-else:
-    # Streamlit 컴포넌트를 사용하여 HTML 콘텐츠를 표시합니다.
-    # HTML 내부에서 파일 입출력 및 다운로드가 직접 이루어지므로, Python 코드는 HTML을 표시하는 역할만 합니다.
-    components.html(html_content, height=850, scrolling=True)
+# 기존 페이지 경로 (index3)
+elif st.session_state.page == "index3":
+    html_file_path = os.path.join(current_dir, "htmls", "index3.html")
+    try:
+        with open(html_file_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        st.components.v1.html(html_content, height=2000, scrolling=True)
+    except FileNotFoundError:
+        st.error(f"오류: HTML 파일을 찾을 수 없습니다. '{html_file_path}' 경로를 확인해 주세요.")
+    except Exception as e:
+        st.error(f"HTML 파일을 불러오는 중 오류가 발생했습니다: {e}")
 
-# 애플리케이션 실행 안내
-st.sidebar.markdown("## 애플리케이션 정보")
-st.sidebar.markdown("이 앱은 순수 JavaScript 기반으로 Brainlink EEG 데이터를 분석합니다.")
-st.sidebar.markdown("1. 원본 CSV/XLSX 파일을 업로드하세요.")
-st.sidebar.markdown("2. '데이터 처리 및 다운로드' 버튼을 누르면 정리된 `.xlsx` 파일이 다운로드됩니다.")
+# 새로 추가된 페이지 경로 (index4)
+elif st.session_state.page == "index4":
+    html_file_path = os.path.join(current_dir, "htmls", "index4.html")
+    try:
+        with open(html_file_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        st.components.v1.html(html_content, height=2000, scrolling=True)
+    except FileNotFoundError:
+        st.error(f"오류: HTML 파일을 찾을 수 없습니다. '{html_file_path}' 경로를 확인해 주세요.")
+    except Exception as e:
+        st.error(f"HTML 파일을 불러오는 중 오류가 발생했습니다: {e}")
