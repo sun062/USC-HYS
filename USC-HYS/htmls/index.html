@@ -1,49 +1,320 @@
-import streamlit as st
-import streamlit.components.v1 as components
-import os
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brainlink EEG 데이터 분석기</title>
+    <!-- Tailwind CSS CDN 로드 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS CDN (엑셀 파일 읽기/쓰기 라이브러리) 로드 -->
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        /* Custom Font for better Korean display */
+        body { font-family: "Inter", "Malgun Gothic", sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
 
-# Streamlit 애플리케이션 설정
-st.set_page_config(
-    page_title="Brainlink EEG 데이터 분석기",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
+    <div id="app" class="w-full max-w-4xl bg-white shadow-2xl rounded-xl p-8 space-y-8">
+        <header class="text-center border-b pb-4">
+            <h1 class="text-3xl font-extrabold text-indigo-700">Brainlink 데이터 자동 분석기</h1>
+            <p class="text-gray-500 mt-1">원본 CSV/XLSX 파일을 업로드하여 시간별 데이터 및 통계 요약 보고서 생성</p>
+        </header>
 
-# 현재 스크립트 파일의 디렉토리를 기준으로 'htmls/index.html' 파일 경로 설정
-# 실제 Streamlit 환경에서는 'htmls' 폴더를 app.py와 같은 레벨에 생성해야 합니다.
-try:
-    # app.py와 동일한 위치에 htmls 폴더가 있다고 가정
-    html_file_path = os.path.join(os.path.dirname(__file__), "htmls", "index.html")
-    
-    # HTML 파일 읽기
-    with open(html_file_path, 'r', encoding='utf-8') as f:
-        html_data = f.read()
+        <!-- 파일 업로드 섹션 -->
+        <div class="space-y-4">
+            <label for="fileInput" class="block text-sm font-medium text-gray-700">1. Brainlink 원본 파일 선택 (.xlsx 또는 .csv)</label>
+            <input type="file" id="fileInput" accept=".csv, .xlsx" class="block w-full text-sm text-gray-500
+                file:mr-4 file:py-2 file:px-4
+                file:rounded-full file:border-0
+                file:text-sm file:font-semibold
+                file:bg-indigo-50 file:text-indigo-700
+                hover:file:bg-indigo-100"
+                onchange="handleFileUpload(event)">
+            
+            <button id="processButton" onclick="startProcessing()" disabled
+                    class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out disabled:bg-indigo-300 disabled:cursor-not-allowed">
+                <span id="buttonText">파일을 선택해주세요</span>
+                <svg id="loadingSpinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </button>
 
-except FileNotFoundError:
-    st.error(f"""
-    **오류: 'htmls/index.html' 파일을 찾을 수 없습니다.**
-    
-    이 애플리케이션을 실행하려면, 아래 단계를 따르세요:
-    1. 'app.py' 파일과 동일한 위치에 'htmls' 폴더를 생성합니다.
-    2. 생성된 'htmls' 폴더 안에 'index.html' 파일을 저장합니다.
-    """)
-    st.stop()
-except Exception as e:
-    st.error(f"HTML 파일 로딩 중 예기치 않은 오류가 발생했습니다: {e}")
-    st.stop()
+            <!-- 상태 메시지 -->
+            <div id="messageBox" class="p-3 text-sm rounded-lg bg-blue-100 text-blue-700 hidden" role="alert">
+                파일 처리 준비 완료. '데이터 처리 및 다운로드' 버튼을 눌러주세요.
+            </div>
+        </div>
+
+        <!-- 처리 내용 설명 섹션 -->
+        <div class="pt-6 border-t border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-800 mb-3">2. 처리 내용</h2>
+            <ul class="list-disc list-inside space-y-2 text-gray-600">
+                <li class="flex items-start">
+                    <svg class="w-5 h-5 text-indigo-500 mr-2 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    **Wide to Long 변환:** 'Attention', 'Relaxation' 등 쉼표로 구분된 모든 시계열 데이터를 1초 단위의 새로운 행으로 재구성합니다.
+                </li>
+                <li class="flex items-start">
+                    <svg class="w-5 h-5 text-indigo-500 mr-2 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    **통계 요약:** 모든 지표(주의력, 이완도, 8가지 뇌파 파워)에 대한 평균, 최소, 최대, 표준편차를 계산합니다.
+                </li>
+            </ul>
+
+            <h3 class="text-lg font-medium text-gray-700 mt-4 mb-2">출력 파일 형식: `analyzed_brainlink_data.xlsx`</h3>
+            <div class="bg-gray-100 p-4 rounded-lg text-sm text-gray-600">
+                <p><strong>Sheet 1: `Long_Format_Data`</strong> (세션 전체의 1초 단위 데이터)</p>
+                <p><strong>Sheet 2: `Summary_Statistics`</strong> (세션 전체 통계 요약)</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수 설정
+        let workbookData = null;
+        const fileInput = document.getElementById('fileInput');
+        const processButton = document.getElementById('processButton');
+        const buttonText = document.getElementById('buttonText');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const messageBox = document.getElementById('messageBox');
+
+        // 처리할 시계열 데이터 열의 헤더 목록 (쉼표로 구분되어 있는 열)
+        const TIME_SERIES_HEADERS = [
+            'Attention/注意力', 'Relaxation/放松度', 
+            'Delta/δ波', 'Theta/θ波', 'Low-Alpha/低α波', 'High-Alpha/高α波', 
+            'Low-Beta/低β波', 'High-Beta/高β波', 'Low-Gamma/低γ波', 'Mid-Gamma/高γ波',
+            'Appreciation/喜好度', 'MentalEffort/用脑度', 'Familarity/熟练度',
+            // SyncRate는 보통 단일 값이지만, 혹시 시계열이면 처리합니다.
+            'SyncRate/同步率'
+        ];
+
+        // 상태 메시지 출력 함수
+        function displayMessage(text, type = 'blue') {
+            messageBox.textContent = text;
+            messageBox.className = `p-3 text-sm rounded-lg mt-3 bg-${type}-100 text-${type}-700`;
+            messageBox.classList.remove('hidden');
+        }
+
+        // ------------------------------------
+        // 1. 파일 읽기 (CSV/XLSX)
+        // ------------------------------------
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            buttonText.textContent = '파일 로드 중...';
+            processButton.disabled = true;
+            loadingSpinner.classList.remove('hidden');
+            messageBox.classList.add('hidden');
+
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const data = e.target.result;
+                    // Array Buffer로 읽어서 XLSX.read에 전달 (CSV 포함하여 처리)
+                    const workbook = XLSX.read(data, { type: 'binary' });
+                    workbookData = workbook;
+
+                    // 첫 번째 시트의 데이터를 읽습니다.
+                    const sheetName = workbook.SheetNames[0];
+                    // header: 1 옵션으로 JSON을 생성하여 헤더 이름으로 접근 가능하게 합니다.
+                    const sheetJson = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, raw: false }); 
+                    
+                    if (sheetJson.length < 2) {
+                         throw new Error("파일에 데이터가 충분하지 않습니다.");
+                    }
+
+                    // 헤더를 첫 번째 행으로 가정하고 저장합니다.
+                    const headers = sheetJson[0];
+                    const dataRows = sheetJson.slice(1);
+                    
+                    workbookData = { headers, dataRows };
+
+                    buttonText.textContent = '데이터 처리 및 다운로드';
+                    processButton.disabled = false;
+                    displayMessage(`"${file.name}" 로드 완료. 이제 분석을 시작할 수 있습니다.`, 'blue');
+
+                } catch (error) {
+                    console.error("파일 처리 중 오류 발생:", error);
+                    displayMessage(`오류: 파일을 읽거나 분석하는 데 문제가 발생했습니다. 파일 형식을 확인해주세요. (${error.message})`, 'red');
+                    workbookData = null;
+                    processButton.disabled = true;
+                    buttonText.textContent = '파일을 선택해주세요';
+                } finally {
+                    loadingSpinner.classList.add('hidden');
+                }
+            };
+            
+            reader.onerror = function() {
+                 displayMessage("파일 읽기 오류. 브라우저 설정을 확인해주세요.", 'red');
+                 loadingSpinner.classList.add('hidden');
+            };
+
+            // CSV나 XLSX 모두 Array Buffer로 읽는 것이 가장 안정적입니다.
+            reader.readAsArrayBuffer(file);
+        }
+
+        // ------------------------------------
+        // 2. 데이터 변환 및 통계 계산
+        // ------------------------------------
+
+        function calculateStatistics(values) {
+            if (values.length === 0) return { avg: 0, min: 0, max: 0, stdev: 0, count: 0 };
+            
+            const sum = values.reduce((a, b) => a + b, 0);
+            const avg = sum / values.length;
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            
+            // 표준편차 (Standard Deviation) 계산
+            const variance = values.map(x => Math.pow(x - avg, 2)).reduce((a, b) => a + b, 0) / values.length;
+            const stdev = Math.sqrt(variance);
+
+            return {
+                avg: parseFloat(avg.toFixed(2)),
+                min,
+                max,
+                stdev: parseFloat(stdev.toFixed(2)),
+                count: values.length
+            };
+        }
+
+        function processData(headers, dataRows) {
+            const longFormatData = [];
+            const summaryStatistics = [];
+
+            // 헤더 인덱스 매핑
+            const headerMap = {};
+            headers.forEach((h, i) => headerMap[h] = i);
+            
+            const constantHeaders = headers.filter(h => !TIME_SERIES_HEADERS.includes(h));
+
+            dataRows.forEach((row, rowIndex) => {
+                // 시계열 데이터 파싱 및 정규화
+                const parsedSeries = {};
+                let maxDuration = 0;
+
+                TIME_SERIES_HEADERS.forEach(header => {
+                    const index = headerMap[header];
+                    if (index !== undefined && row[index]) {
+                        // 문자열에서 따옴표를 제거하고 쉼표로 분리하여 숫자로 변환
+                        let dataStr = String(row[index]).replace(/"/g, '');
+                        // 숫자만 추출하고, 빈 문자열은 0으로 처리하거나 무시할 수 있으나, 여기서는 숫자로만 구성된 값만 사용
+                        const values = dataStr.split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
+                        parsedSeries[header] = values;
+                        maxDuration = Math.max(maxDuration, values.length);
+                    } else {
+                        parsedSeries[header] = [];
+                    }
+                });
+
+                // 총 지속 시간 (Duration)을 row[1]에서 가져와 정확한 길이를 보장합니다.
+                const explicitDuration = parseInt(row[headerMap['时长(Duration)/秒(ss)']]);
+                const finalDuration = !isNaN(explicitDuration) && explicitDuration > maxDuration ? explicitDuration : maxDuration;
+                
+                // 1. Long Format 데이터 생성
+                for (let i = 0; i < finalDuration; i++) {
+                    const longRow = {
+                        'Time (s)': i + 1, // 1초부터 시작
+                    };
+
+                    // 상수(Constant) 열 값 복사
+                    constantHeaders.forEach(header => {
+                        const val = row[headerMap[header]];
+                        // Duration, Time-set 같은 열은 Long Format에서는 필요 없으므로 건너뜁니다.
+                        if (header !== '时长(Duration)/秒(ss)' && header !== 'Time-set/시간집합' && header !== 'R-R intervals/R-R간격') {
+                             longRow[header] = val;
+                        }
+                    });
+
+                    // 시계열(Time-Series) 열 값 할당
+                    TIME_SERIES_HEADERS.forEach(header => {
+                        const series = parsedSeries[header];
+                        // 데이터가 없거나 인덱스를 벗어나면 빈칸 또는 0으로 처리할 수 있으나, 여기서는 0으로 처리 (데이터 결측 방지)
+                        longRow[header] = series.length > i ? series[i] : (header === 'SyncRate/同步率' ? 100 : 0); 
+                    });
+
+                    longFormatData.push(longRow);
+                }
 
 
-# Streamlit에 HTML 컴포넌트 삽입
-# height는 HTML 컨텐츠가 스크롤 없이 충분히 표시될 수 있도록 넉넉하게 설정
-components.html(
-    html_data,
-    height=850, 
-    scrolling=True 
-)
+                // 2. Summary Statistics 계산 및 저장
+                const summaryRow = {
+                    'Metric': '',
+                    'Average': 0,
+                    'Min': 0,
+                    'Max': 0,
+                    'StdDev': 0,
+                    'Data Points': 0,
+                    'Session Date': row[headerMap['Date/日期']],
+                    'Session Tag': row[headerMap['Tag/备注']]
+                };
+                
+                TIME_SERIES_HEADERS.forEach(header => {
+                    const series = parsedSeries[header];
+                    const stats = calculateStatistics(series);
+                    
+                    summaryStatistics.push({
+                        ...summaryRow,
+                        'Metric': header.split('/')[0] + ' (' + header.split('/').pop() + ')', // 이름 정리 (예: Attention (注意力))
+                        'Average': stats.avg,
+                        'Min': stats.min,
+                        'Max': stats.max,
+                        'StdDev': stats.stdev,
+                        'Data Points': stats.count
+                    });
+                });
+            });
 
-st.markdown("""
-<div style='text-align: center; margin-top: 20px; color: #555;'>
-    <p>💡 이 분석기는 모든 데이터 처리(파일 업로드/분석/다운로드)를 <b>사용자 브라우저</b>에서 실행합니다.</p>
-    <p>따라서 대용량 파일도 빠르고 안전하게 처리할 수 있습니다.</p>
-</div>
-""", unsafe_allow_html=True)
+            return { longFormatData, summaryStatistics };
+        }
+
+
+        // ------------------------------------
+        // 3. 메인 프로세스 및 다운로드
+        // ------------------------------------
+
+        function startProcessing() {
+            if (!workbookData) {
+                displayMessage('처리할 파일 데이터가 없습니다. 파일을 다시 업로드해주세요.', 'orange');
+                return;
+            }
+
+            processButton.disabled = true;
+            buttonText.textContent = '처리 중...';
+            loadingSpinner.classList.remove('hidden');
+            messageBox.classList.add('hidden');
+
+            try {
+                // 데이터 변환 및 통계 계산
+                const { longFormatData, summaryStatistics } = processData(workbookData.headers, workbookData.dataRows);
+
+                // 새 워크북 생성
+                const newWorkbook = XLSX.utils.book_new();
+
+                // Sheet 1: Long Format Data
+                const longSheet = XLSX.utils.json_to_sheet(longFormatData);
+                XLSX.utils.book_append_sheet(newWorkbook, longSheet, "Long_Format_Data");
+
+                // Sheet 2: Summary Statistics
+                const summarySheet = XLSX.utils.json_to_sheet(summaryStatistics);
+                XLSX.utils.book_append_sheet(newWorkbook, summarySheet, "Summary_Statistics");
+
+                // 파일 다운로드
+                XLSX.writeFile(newWorkbook, "analyzed_brainlink_data.xlsx");
+
+                displayMessage('✅ 분석 및 다운로드가 완료되었습니다. "analyzed_brainlink_data.xlsx" 파일을 확인해주세요.', 'green');
+            } catch (error) {
+                console.error("데이터 처리 최종 오류:", error);
+                displayMessage(`심각한 오류가 발생하여 처리를 완료할 수 없습니다: ${error.message}`, 'red');
+            } finally {
+                processButton.disabled = false;
+                buttonText.textContent = '데이터 처리 및 다운로드';
+                loadingSpinner.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
