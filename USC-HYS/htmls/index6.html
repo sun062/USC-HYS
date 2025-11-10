@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brainlink 데이터 증감률 분석기</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS 라이브러리 추가: XLSX 파일 파싱을 위해 사용 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        /* Inter 폰트 설정 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f9;
+        }
+        .container {
+            max-width: 1000px;
+        }
+        .file-input {
+            border: 2px dashed #d1d5db;
+            padding: 1rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .file-input:hover {
+            border-color: #9ca3af;
+            background-color: #f3f4f6;
+        }
+        .analysis-box {
+            background-color: #fffbeb; /* Light yellow background for analysis */
+            border: 1px solid #fde68a; /* Yellow border */
+            color: #92400e; /* Brownish text */
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="container mx-auto bg-white shadow-xl rounded-2xl p-6 md:p-10">
+        <h1 class="text-3xl font-extrabold text-gray-800 mb-6 text-center">
+            카페인 섭취 전후 데이터 증감률 분석
+        </h1>
+        <p class="text-gray-600 mb-8 text-center">
+            Brainlink 평균 데이터 파일을 업로드하여 각 지표의 증감률을 확인하세요.
+        </p>
+
+        <!-- 파일 업로드 섹션 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- 1. 카페인 미섭취 (Before) -->
+            <div class="bg-blue-50 p-6 rounded-xl border border-blue-200">
+                <label for="fileNoCaffeine" class="block text-lg font-semibold text-blue-800 mb-3">
+                    [1] 카페인 미섭취 데이터 (기준값)
+                </label>
+                <div class="file-input rounded-xl" id="fileNoCaffeineContainer">
+                    <input type="file" id="fileNoCaffeine" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="hidden" onchange="displayFileName('fileNoCaffeine', 'fileNameNoCaffeine')">
+                    <p class="text-blue-600"><span id="fileNameNoCaffeine" class="font-medium text-gray-700">파일을 선택하세요 (.csv 또는 .xlsx)</span></p>
+                    <p class="text-sm text-blue-500 mt-1">첫 번째 행은 헤더(태그, Attention 등)여야 합니다. Excel 파일은 첫 번째 시트를 사용합니다.</p>
+                </div>
+            </div>
+
+            <!-- 2. 카페인 섭취 (After) -->
+            <div class="bg-green-50 p-6 rounded-xl border border-green-200">
+                <label for="fileWithCaffeine" class="block text-lg font-semibold text-green-800 mb-3">
+                    [2] 카페인 섭취 데이터 (비교값)
+                </label>
+                <div class="file-input rounded-xl" id="fileWithCaffeineContainer">
+                    <input type="file" id="fileWithCaffeine" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="hidden" onchange="displayFileName('fileWithCaffeine', 'fileNameWithCaffeine')">
+                    <p class="text-green-600"><span id="fileNameWithCaffeine" class="font-medium text-gray-700">파일을 선택하세요 (.csv 또는 .xlsx)</span></p>
+                    <p class="text-sm text-green-500 mt-1">두 파일의 '태그' 항목이 일치해야 합니다.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 버튼 및 상태 메시지 -->
+        <div class="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4 mb-8">
+            <button id="runAnalysis" onclick="runAnalysis()"
+                    class="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 transition duration-150 transform hover:scale-[1.02] disabled:bg-indigo-300 disabled:cursor-not-allowed">
+                분석 실행
+            </button>
+            <button id="downloadExcel" onclick="downloadCSV()" disabled
+                    class="w-full sm:w-auto px-6 py-3 bg-gray-400 text-white font-bold rounded-xl shadow-lg hover:bg-gray-500 transition duration-150 transform hover:scale-[1.02] disabled:bg-gray-300 disabled:cursor-not-allowed">
+                Excel 다운로드 (.csv)
+            </button>
+        </div>
+
+        <div id="statusMessage" class="text-center p-3 rounded-lg font-semibold hidden"></div>
+
+        <!-- 결과 섹션 -->
+        <div id="resultsSection" class="mt-10 hidden">
+            
+            <!-- 분석 요약 (새로 추가됨) -->
+            <div id="analysisSummary" class="analysis-box p-5 rounded-xl shadow-md mb-8">
+                <h2 class="text-xl font-bold text-gray-900 mb-3">📊 분석 요약</h2>
+                <div id="summaryContent" class="text-sm leading-relaxed">
+                    <!-- 요약 내용이 여기에 삽입됩니다 -->
+                </div>
+            </div>
+
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">상세 증감률 테이블 (%)</h2>
+            <div class="overflow-x-auto rounded-xl shadow-lg">
+                <table id="resultsTable" class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <!-- 헤더가 여기에 삽입됩니다 -->
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <!-- 데이터가 여기에 삽입됩니다 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 템플릿: 사용자에게 파일을 업로드하는 방법을 보여주는 이미지 -->
+        <div class="mt-8 pt-6 border-t border-gray-200 text-center">
+            <p class="text-gray-500 text-sm">
+                파일 형식이 궁금하다면 예시를 참고하세요.
+                
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수
+        let parsedData = null; // 분석된 결과를 저장할 변수
+
+        // DOMContentLoaded 이벤트 리스너 대신, 인라인 함수를 사용하고 window.onload는 사용하지 않겠습니다.
+        // 파일 입력 컨테이너 클릭 시 파일 선택창 열기
+        document.getElementById('fileNoCaffeineContainer').addEventListener('click', () => {
+            document.getElementById('fileNoCaffeine').click();
+        });
+        document.getElementById('fileWithCaffeineContainer').addEventListener('click', () => {
+            document.getElementById('fileWithCaffeine').click();
+        });
+
+        /**
+         * 파일 선택 시 파일 이름 표시
+         * @param {string} inputId - file input 요소 ID
+         * @param {string} nameSpanId - 파일 이름 표시할 span ID
+         */
+        function displayFileName(inputId, nameSpanId) {
+            const input = document.getElementById(inputId);
+            const nameSpan = document.getElementById(nameSpanId);
+            if (input.files.length > 0) {
+                nameSpan.textContent = `✅ ${input.files[0].name}`;
+            } else {
+                nameSpan.textContent = '파일을 선택하세요 (.csv 또는 .xlsx)';
+            }
+            // 분석 버튼 활성화/비활성화
+            checkFilesReady();
+        }
+
+        /**
+         * 파일 두 개가 모두 선택되었는지 확인
+         */
+        function checkFilesReady() {
+            const file1 = document.getElementById('fileNoCaffeine').files.length > 0;
+            const file2 = document.getElementById('fileWithCaffeine').files.length > 0;
+            document.getElementById('runAnalysis').disabled = !(file1 && file2);
+        }
+
+        /**
+         * 상태 메시지 표시
+         * @param {string} message - 표시할 메시지
+         * @param {string} type - 'success', 'error', 'info'
+         */
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.textContent = message;
+            statusDiv.className = `text-center p-3 rounded-lg font-semibold mt-4`;
+            statusDiv.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-yellow-100', 'text-yellow-700');
+            if (type === 'error') {
+                statusDiv.classList.add('bg-red-100', 'text-red-700');
+            } else if (type === 'success') {
+                statusDiv.classList.add('bg-green-100', 'text-green-700');
+            } else {
+                statusDiv.classList.add('bg-yellow-100', 'text-yellow-700');
+            }
+            document.getElementById('downloadExcel').disabled = true;
+            document.getElementById('resultsSection').classList.add('hidden');
+        }
+
+        /**
+         * CSV 텍스트를 파싱하여 객체 배열로 변환
+         * @param {string} csvText - CSV 파일의 텍스트 내용
+         * @returns {Array<Object>} 파싱된 데이터 객체 배열
+         */
+        function parseCSV(csvText) {
+            const lines = csvText.trim().split('\n');
+            if (lines.length < 2) return [];
+
+            // 헤더 추출 (Trim하고 불필요한 공백 제거)
+            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+            const data = [];
+
+            // 데이터 행 파싱
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',');
+                if (values.length !== headers.length) continue; // 데이터 무결성 검사
+
+                const row = {};
+                for (let j = 0; j < headers.length; j++) {
+                    const header = headers[j];
+                    let value = values[j].trim().replace(/"/g, '');
+
+                    // 숫자형으로 변환 시도 (첫 번째 헤더는 문자열로 유지)
+                    if (j > 0 && !isNaN(parseFloat(value)) && isFinite(value)) {
+                        row[header] = parseFloat(value);
+                    } else {
+                        row[header] = value;
+                    }
+                }
+                data.push(row);
+            }
+            return data;
+        }
+
+        /**
+         * 비동기 파일 읽기 및 CSV 텍스트로 변환 (XLSX 지원 포함)
+         * @param {File} file - 읽을 파일 객체
+         * @returns {Promise<string>} 파일 내용(텍스트)을 포함하는 Promise (CSV 형식)
+         */
+        function readFileAsync(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                const fileName = file.name.toLowerCase();
+
+                if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+                    // XLSX 파일 처리 (ArrayBuffer로 읽기)
+                    reader.onload = (event) => {
+                        try {
+                            if (typeof XLSX === 'undefined') {
+                                reject(new Error("XLSX 파싱 라이브러리가 로드되지 않았습니다. 인터넷 연결을 확인해주세요."));
+                                return;
+                            }
+                            const data = new Uint8Array(event.target.result);
+                            // XLSX 라이브러리를 사용하여 워크북 읽기
+                            const workbook = XLSX.read(data, { type: 'array' });
+                            // 첫 번째 시트 이름 가져오기
+                            const sheetName = workbook.SheetNames[0];
+                            const worksheet = workbook.Sheets[sheetName];
+                            // 시트 데이터를 CSV 형식 텍스트로 변환
+                            // FS: 필드 구분자 (Comma), RS: 행 구분자 (Newline)
+                            const csvText = XLSX.utils.sheet_to_csv(worksheet, { FS: ',', RS: '\n' });
+                            resolve(csvText);
+                        } catch (e) {
+                            reject(new Error(`XLSX 파일 파싱 오류: ${e.message}. 파일이 손상되었거나 형식이 올바르지 않은지 확인해주세요.`));
+                        }
+                    };
+                    reader.onerror = (error) => reject(error);
+                    reader.readAsArrayBuffer(file);
+                } else if (fileName.endsWith('.csv')) {
+                    // CSV 파일 처리 (Text로 읽기)
+                    reader.onload = (event) => resolve(event.target.result);
+                    reader.onerror = (error) => reject(error);
+                    // 한글 인코딩 처리를 위해 euc-kr 시도 (utf-8이 기본이지만 안전하게 처리)
+                    reader.readAsText(file, 'euc-kr'); 
+                } else {
+                    reject(new Error("지원하지 않는 파일 형식입니다. .csv 또는 .xlsx 파일을 업로드해주세요."));
+                }
+            });
+        }
+
+        /**
+         * 두 데이터셋을 분석하여 증감률 계산
+         * @param {Array<Object>} dataNoCaffeine - 카페인 미섭취 데이터
+         * @param {Array<Object>} dataWithCaffeine - 카페인 섭취 데이터
+         * @returns {{results: Array<Object>, metrics: Array<string>, tagHeader: string, overallAverage: number, attentionAverage: number, relaxationAverage: number}} 분석 결과 객체
+         */
+        function calculateChangeRate(dataNoCaffeine, dataWithCaffeine) {
+            if (dataNoCaffeine.length === 0 || dataWithCaffeine.length === 0) {
+                throw new Error("업로드된 파일에 유효한 데이터가 없습니다.");
+            }
+
+            // 헤더 확인 및 태그 헤더 식별
+            const headerKeysNo = Object.keys(dataNoCaffeine[0]);
+            const tagHeader = headerKeysNo[0]; // 첫 번째 컬럼을 태그로 가정
+
+            if (!tagHeader.includes('태그') && !tagHeader.toLowerCase().includes('tag')) {
+                throw new Error(`첫 번째 컬럼(${tagHeader})이 '태그(Tag)' 항목이 아닌 것 같습니다. 컬럼 헤더가 올바른지 확인해주세요.`);
+            }
+
+            // 비교를 위한 기준 데이터 맵 생성 (태그를 키로 사용)
+            const mapNoCaffeine = new Map();
+            dataNoCaffeine.forEach(row => {
+                mapNoCaffeine.set(row[tagHeader], row);
+            });
+
+            const results = [];
+            const metrics = [];
+            let totalRateSum = 0;
+            let totalRateCount = 0;
+            let attentionRateSum = 0;
+            let attentionRateCount = 0;
+            let relaxationRateSum = 0;
+            let relaxationRateCount = 0;
+            
+            const ATTENTION_KEYS = ['Attention/注意力', 'Attention'];
+            const RELAXATION_KEYS = ['Relaxation/放松度', 'Relaxation'];
+
+            dataWithCaffeine.forEach(rowWith => {
+                const tag = rowWith[tagHeader];
+                const rowNo = mapNoCaffeine.get(tag);
+
+                if (!rowNo) {
+                    // 미섭취 데이터에 태그가 없는 경우 건너뛰기
+                    console.warn(`미섭취 데이터에서 태그 '${tag}'를 찾을 수 없습니다. 해당 항목은 분석에서 제외됩니다.`);
+                    return;
+                }
+
+                const resultRow = { [tagHeader]: tag };
+
+                // 첫 번째 컬럼(태그)을 제외한 나머지 컬럼들에 대해 계산
+                Object.keys(rowWith).forEach((key, index) => {
+                    if (index === 0) return; // 첫 번째 태그 컬럼은 건너뛰기
+
+                    if (metrics.indexOf(key) === -1) {
+                        metrics.push(key);
+                    }
+
+                    const valWith = rowWith[key];
+                    const valNo = rowNo[key];
+
+                    // 숫자형 데이터인지 확인
+                    if (typeof valWith === 'number' && typeof valNo === 'number') {
+                        let rate = 0;
+                        if (valNo !== 0) {
+                            // 증감률 (%) = (섭취 값 - 미섭취 값) / 미섭취 값 * 100
+                            rate = ((valWith - valNo) / valNo) * 100;
+                        } else if (valWith !== 0) {
+                            // 미섭취 값이 0이고 섭취 값이 0이 아니면 무한대 증가로 간주 (매우 큰 값으로 표시)
+                            rate = 99999.99;
+                        } else {
+                            // 둘 다 0이면 0% (변화 없음)
+                            rate = 0;
+                        }
+                        
+                        const finalRate = parseFloat(rate.toFixed(2));
+                        resultRow[key] = finalRate; // 소수점 둘째 자리까지 반올림
+
+                        // 전체 평균 계산을 위한 누적
+                        totalRateSum += finalRate;
+                        totalRateCount++;
+
+                        // 주요 지표 평균 계산을 위한 누적
+                        if (ATTENTION_KEYS.includes(key)) {
+                            attentionRateSum += finalRate;
+                            attentionRateCount++;
+                        } else if (RELAXATION_KEYS.includes(key)) {
+                            relaxationRateSum += finalRate;
+                            relaxationRateCount++;
+                        }
+
+                    } else {
+                        // 숫자가 아닌 데이터는 분석에서 제외 (빈 문자열 처리)
+                        resultRow[key] = "";
+                    }
+                });
+                results.push(resultRow);
+            });
+
+            const overallAverage = totalRateCount > 0 ? parseFloat((totalRateSum / totalRateCount).toFixed(2)) : 0;
+            const attentionAverage = attentionRateCount > 0 ? parseFloat((attentionRateSum / attentionRateCount).toFixed(2)) : 0;
+            const relaxationAverage = relaxationRateCount > 0 ? parseFloat((relaxationRateSum / relaxationRateCount).toFixed(2)) : 0;
+
+
+            return { results, metrics, tagHeader, overallAverage, attentionAverage, relaxationAverage };
+        }
+
+        /**
+         * 분석 결과를 HTML 테이블에 표시
+         * @param {Object} analysisResult - calculateChangeRate 함수에서 반환된 결과 객체
+         */
+        function displayResults(analysisResult) {
+            const { results, metrics, tagHeader } = analysisResult;
+            const tableHead = document.querySelector('#resultsTable thead');
+            const tableBody = document.querySelector('#resultsTable tbody');
+
+            // 1. 헤더 생성
+            let headerHtml = '<tr>';
+            headerHtml += `<th class="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-100">${tagHeader}</th>`; // 태그 컬럼
+            metrics.forEach(metric => {
+                headerHtml += `<th class="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">${metric.split('/')[0]} (%)</th>`;
+            });
+            headerHtml += '</tr>';
+            tableHead.innerHTML = headerHtml;
+
+            // 2. 본문 데이터 생성
+            let bodyHtml = '';
+            results.forEach(row => {
+                bodyHtml += '<tr>';
+                // 태그 컬럼
+                bodyHtml += `<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white">${row[tagHeader]}</td>`;
+
+                // 메트릭 컬럼
+                metrics.forEach(metric => {
+                    const value = row[metric];
+                    let cellClass = 'text-gray-900';
+                    let displayValue = value;
+
+                    if (typeof value === 'number') {
+                        if (value > 0) {
+                            cellClass = 'text-red-600 font-semibold'; // 증가: 빨간색
+                            displayValue = `+${value.toLocaleString()}`;
+                        } else if (value < 0) {
+                            cellClass = 'text-blue-600 font-semibold'; // 감소: 파란색
+                            displayValue = value.toLocaleString();
+                        } else {
+                            displayValue = '0.00';
+                        }
+                    } else if (value === "") {
+                         displayValue = 'N/A';
+                    }
+
+                    bodyHtml += `<td class="px-6 py-4 whitespace-nowrap text-sm text-center ${cellClass}">${displayValue}</td>`;
+                });
+                bodyHtml += '</tr>';
+            });
+            tableBody.innerHTML = bodyHtml;
+
+            // 3. 분석 요약 생성 및 표시 (새로 추가됨)
+            displayAnalysisSummary(analysisResult);
+
+            // 4. 섹션 표시
+            document.getElementById('resultsSection').classList.remove('hidden');
+            showStatus(`분석 완료! 총 ${results.length}개의 태그에 대한 증감률이 계산되었습니다.`, 'success');
+            document.getElementById('downloadExcel').disabled = false;
+        }
+
+        /**
+         * 분석 요약을 생성하고 표시
+         * @param {Object} analysisResult - calculateChangeRate 함수에서 반환된 결과 객체
+         */
+        function displayAnalysisSummary(analysisResult) {
+            const { overallAverage, attentionAverage, relaxationAverage } = analysisResult;
+            const summaryDiv = document.getElementById('summaryContent');
+            
+            // 1. 전체 평균 변화 분석
+            let overallText = `전체 평균 증감률: <span class="font-extrabold ${overallAverage > 0 ? 'text-red-600' : (overallAverage < 0 ? 'text-blue-600' : 'text-gray-800')}">${overallAverage > 0 ? '+' : ''}${overallAverage.toFixed(2)}%</span> 입니다.`;
+            overallText += overallAverage > 0 
+                ? " 카페인 섭취 후 전반적인 뇌파 지표가 **증가**하는 경향을 보였습니다."
+                : (overallAverage < 0 
+                    ? " 카페인 섭취 후 전반적인 뇌파 지표가 **감소**하는 경향을 보였습니다."
+                    : " 카페인 섭취 전후로 전반적인 뇌파 지표의 변화는 거의 없었습니다.");
+
+            // 2. Attention 변화 분석
+            let attentionText = `Attention(집중도) 평균 변화율: <span class="font-extrabold ${attentionAverage > 0 ? 'text-red-600' : (attentionAverage < 0 ? 'text-blue-600' : 'text-gray-800')}">${attentionAverage > 0 ? '+' : ''}${attentionAverage.toFixed(2)}%</span>`;
+            attentionText += attentionAverage > 0
+                ? "로 **집중도가 향상**되었습니다. 이는 카페인의 대표적인 각성 효과와 일치합니다."
+                : (attentionAverage < 0
+                    ? "로 **집중도가 소폭 감소**했습니다. 이는 데이터 집단에 따라 카페인의 영향이 다르거나 피로 누적 등의 다른 요인이 작용한 것일 수 있습니다."
+                    : "로 변화가 미미했습니다.");
+
+            // 3. Relaxation 변화 분석
+            let relaxationText = `Relaxation(이완도) 평균 변화율: <span class="font-extrabold ${relaxationAverage > 0 ? 'text-red-600' : (relaxationAverage < 0 ? 'text-blue-600' : 'text-gray-800')}">${relaxationAverage > 0 ? '+' : ''}${relaxationAverage.toFixed(2)}%</span>`;
+            relaxationText += relaxationAverage < 0
+                ? "로 **이완도가 감소**했습니다. 이는 집중도 증가와 함께 카페인이 뇌를 각성 상태로 전환시켰음을 시사합니다."
+                : (relaxationAverage > 0
+                    ? "로 **이완도가 증가**했습니다. 이는 의외의 결과일 수 있으며, 개인이 카페인을 통해 오히려 안정감을 느끼거나 측정 초반부에 이완도가 높게 나타났을 가능성이 있습니다."
+                    : "로 변화가 미미했습니다.");
+
+
+            // 최종 요약 내용 구성
+            summaryDiv.innerHTML = `
+                <p class="mb-2"><strong>1. 전체 지표 평균 변화:</strong> ${overallText}</p>
+                <p class="mb-2"><strong>2. 주요 지표 (Attention):</strong> ${attentionText}</p>
+                <p><strong>3. 주요 지표 (Relaxation):</strong> ${relaxationText}</p>
+                <p class="mt-4 text-xs text-gray-600">*위 분석은 단순 평균 변화율을 바탕으로 한 요약입니다. 보다 정확한 판단을 위해 상세 테이블을 참고하시고 통계적 유의성을 검토해야 합니다.</p>
+            `;
+        }
+
+
+        /**
+         * 분석 프로세스 실행
+         */
+        async function runAnalysis() {
+            const fileNoCaffeine = document.getElementById('fileNoCaffeine').files[0];
+            const fileWithCaffeine = document.getElementById('fileWithCaffeine').files[0];
+
+            if (!fileNoCaffeine || !fileWithCaffeine) {
+                showStatus('두 파일 모두 업로드해주세요.', 'error');
+                return;
+            }
+
+            showStatus('파일 읽기 및 분석 중...', 'info');
+            document.getElementById('runAnalysis').disabled = true;
+            document.getElementById('downloadExcel').disabled = true;
+
+            try {
+                // 1. 파일 내용 읽기 (XLSX/CSV 자동 감지 및 CSV 텍스트로 변환)
+                const textNo = await readFileAsync(fileNoCaffeine);
+                const textWith = await readFileAsync(fileWithCaffeine);
+
+                // 2. CSV 파싱
+                const dataNo = parseCSV(textNo);
+                const dataWith = parseCSV(textWith);
+
+                // 3. 증감률 계산
+                parsedData = calculateChangeRate(dataNo, dataWith);
+
+                // 4. 결과 표시
+                displayResults(parsedData);
+
+            } catch (error) {
+                console.error(error);
+                showStatus(`분석 오류 발생: ${error.message}. 파일 형식(.csv 또는 .xlsx) 및 헤더를 확인해주세요.`, 'error');
+            } finally {
+                document.getElementById('runAnalysis').disabled = false;
+            }
+        }
+
+        /**
+         * 결과를 CSV 파일로 다운로드
+         */
+        function downloadCSV() {
+            if (!parsedData || parsedData.results.length === 0) {
+                showStatus('다운로드할 분석 결과가 없습니다.', 'error');
+                return;
+            }
+
+            const { results, metrics, tagHeader } = parsedData;
+
+            // 1. 헤더 행 생성
+            let csvContent = `"${tagHeader}",${metrics.map(m => `"${m.split('/')[0]} (%)"`).join(',')}\n`;
+
+            // 2. 데이터 행 생성
+            results.forEach(row => {
+                const values = [row[tagHeader]]; // 태그 값
+                metrics.forEach(metric => {
+                    // 값에 따옴표를 사용하여 CSV 형식 유지
+                    values.push(row[metric]);
+                });
+                csvContent += values.map(v => `"${v}"`).join(',') + '\n';
+            });
+
+            // 3. 파일 다운로드 트리거
+            const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' }); // BOM 추가로 한글 깨짐 방지
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('href', url);
+            a.setAttribute('download', 'Brainlink_Caffeine_Change_Rate_Analysis.csv');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            showStatus('분석 결과가 성공적으로 다운로드되었습니다.', 'success');
+        }
+
+    </script>
+</body>
+</html>
