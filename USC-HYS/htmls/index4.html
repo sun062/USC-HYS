@@ -1,1 +1,595 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brainlink 데이터 통계 분석기 (T-검정)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PapaParse for CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- SheetJS for XLSX parsing (NEW) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    
+    <!-- Inter Font -->
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f4f7f9; }
+        .card { background-color: white; border-radius: 1rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06); }
+        /* 기본 상태: 회색 점선 */
+        .input-file-area { border: 2px dashed #9ca3af; transition: border-color 0.3s, background-color 0.3s; }
+        .input-file-area:hover { border-color: #4f46e5; }
+    </style>
+</head>
+<body>
 
+<div class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-4xl space-y-8 p-8 card">
+        <header class="text-center">
+            <h1 class="text-3xl font-extrabold text-indigo-700">Brainlink 데이터 통계 분석</h1>
+            <p class="mt-2 text-gray-600">카페인 섭취 전/후 데이터에 대한 독립 표본 T-검정 수행</p>
+        </header>
+
+        <!-- File Upload Area -->
+        <div class="grid md:grid-cols-2 gap-6">
+            <!-- Pre-Caffeine Upload -->
+            <div id="pre-drop-area" class="input-file-area p-6 text-center transition-all duration-300 hover:shadow-lg">
+                <label for="preFileInput" class="cursor-pointer">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 014 4v2a2 2 0 01-2 2h-6l-3-3m0 0l3-3m-3 3h12"></path></svg>
+                    <p class="mt-2 text-lg font-medium text-gray-900">카페인 섭취 전 (Pre) 데이터</p>
+                    <p id="preFileName" class="text-sm text-indigo-500 font-semibold truncate"></p>
+                    <p class="text-xs text-gray-500 mt-1">CSV 또는 XLSX 파일 업로드</p>
+                </label>
+                <input type="file" id="preFileInput" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="hidden" onchange="handleFileSelect(event, 'pre')" />
+            </div>
+
+            <!-- Post-Caffeine Upload -->
+            <div id="post-drop-area" class="input-file-area p-6 text-center transition-all duration-300 hover:shadow-lg">
+                <label for="postFileInput" class="cursor-pointer">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 014 4v2a2 2 0 01-2 2h-6l-3-3m0 0l3-3m-3 3h12"></path></svg>
+                    <p class="mt-2 text-lg font-medium text-gray-900">카페인 섭취 후 (Post) 데이터</p>
+                    <p id="postFileName" class="text-sm text-indigo-500 font-semibold truncate"></p>
+                    <p class="text-xs text-gray-500 mt-1">CSV 또는 XLSX 파일 업로드</p>
+                </label>
+                <input type="file" id="postFileInput" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="hidden" onchange="handleFileSelect(event, 'post')" />
+            </div>
+        </div>
+
+        <!-- Analysis Button -->
+        <div class="text-center pt-4">
+            <button id="analyzeButton" onclick="runAnalysis()"
+                    class="w-full md:w-auto px-10 py-3 text-lg font-bold text-white bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled>
+                통계 분석 및 결과 다운로드
+            </button>
+        </div>
+
+        <!-- Result/Message Area -->
+        <div id="messageArea" class="hidden p-4 text-sm text-center rounded-lg" role="alert"></div>
+
+        <!-- Results Table Container -->
+        <div id="resultsContainer" class="hidden mt-8 overflow-x-auto card p-4">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">T-검정 분석 결과 (Pre vs Post)</h2>
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">지표</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pre 평균</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Post 평균</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">T-통계량</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">자유도 (DF)</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">P-Value (추정)</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">유의성 (α=0.05)</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsTableBody" class="bg-white divide-y divide-gray-200">
+                    <!-- Results will be inserted here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 전역 상태 변수
+    let preData = null;
+    let postData = null;
+    
+    // UI 요소
+    const preFileInput = document.getElementById('preFileInput');
+    const postFileInput = document.getElementById('postFileInput');
+    const preFileNameElement = document.getElementById('preFileName');
+    const postFileNameElement = document.getElementById('postFileName');
+    const preDropArea = document.getElementById('pre-drop-area');
+    const postDropArea = document.getElementById('post-drop-area');
+    const analyzeButton = document.getElementById('analyzeButton');
+    const messageArea = document.getElementById('messageArea');
+    const resultsContainer = document.getElementById('resultsContainer');
+    const resultsTableBody = document.getElementById('resultsTableBody');
+
+    // Brainlink 지표 헤더 매핑 (원본 -> 한국어 표시명)
+    const HEADER_MAP = {
+        'Attention/注意力': '주의력 (Attention)',
+        'Relaxation/放松度': '이완도 (Relaxation)',
+        'Delta/δ波': '델타파 (Delta)',
+        'Theta/θ波': '세타파 (Theta)',
+        'Low-Alpha/低α波': '저알파파 (Low-Alpha)',
+        'High-Alpha/高α波': '고알파파 (High-Alpha)',
+        'Low-Beta/低β波': '저베타파 (Low-Beta)',
+        'High-Beta/高β波': '고베타파 (High-Beta)',
+        'Low-Gamma/低γ波': '저감마파 (Low-Gamma)',
+        'Mid-Gamma/高γ波': '고감마파 (Mid-Gamma)',
+        // 추가적인 지표가 있다면 여기에 포함
+        'Appreciation/喜好度': '선호도 (Appreciation)',
+        'MentalEffort/用脑度': '용뇌도 (Mental Effort)',
+        'Familarity/熟练度': '숙련도 (Familiarity)',
+        'SyncRate/同步率': '동기화율 (Sync Rate)',
+    };
+    
+    // 분석 대상이 될 지표 키 (순서 보장)
+    const METRIC_KEYS = Object.keys(HEADER_MAP);
+
+    /**
+     * 상태 메시지를 표시합니다.
+     * @param {string} message - 표시할 메시지
+     * @param {string} type - 'success' 또는 'error'
+     */
+    function showMessage(message, type) {
+        messageArea.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-yellow-100', 'text-yellow-700');
+        if (type === 'error') {
+            messageArea.classList.add('bg-red-100', 'text-red-700');
+        } else if (type === 'success') {
+            messageArea.classList.add('bg-green-100', 'text-green-700');
+        } else if (type === 'warning') {
+             messageArea.classList.add('bg-yellow-100', 'text-yellow-700');
+        }
+        messageArea.innerHTML = message;
+    }
+
+     /**
+     * 파일 드롭 영역의 UI 상태를 업데이트합니다.
+     * @param {string} type - 'pre' 또는 'post'
+     * @param {string} state - 'initial', 'loaded', 'error'
+     * @param {string} fileName - 파일 이름
+     */
+    function updateDropAreaUI(type, state, fileName = '') {
+        const dropArea = type === 'pre' ? preDropArea : postDropArea;
+        const fileNameElement = type === 'pre' ? preFileNameElement : postFileNameElement;
+        const fileInput = type === 'pre' ? preFileInput : postFileInput;
+
+        // Reset classes
+        dropArea.classList.remove('border-green-500', 'border-red-500', 'bg-green-50', 'bg-red-50', 'text-green-700', 'text-red-700', 'border-gray-400');
+        
+        // Reset file name display classes
+        fileNameElement.classList.remove('text-indigo-500', 'text-green-700', 'text-red-700', 'font-bold');
+
+        if (state === 'loaded') {
+            dropArea.classList.add('border-green-500', 'bg-green-50');
+            fileNameElement.textContent = `✅ ${fileName}`;
+            fileNameElement.classList.add('text-green-700', 'font-bold');
+        } else if (state === 'error') {
+            dropArea.classList.add('border-red-500', 'bg-red-50');
+            fileNameElement.textContent = '❌ 파일 로드 실패 (CSV/XLSX 형식 및 데이터 확인)';
+            fileNameElement.classList.add('text-red-700', 'font-bold');
+            fileInput.value = ''; // Reset input so user can re-select the same file
+        } else { // initial/reset
+            dropArea.classList.add('border-gray-400');
+            fileNameElement.textContent = fileName || ''; // Show file name during loading, clear otherwise
+            fileNameElement.classList.add('text-indigo-500');
+        }
+    }
+    
+    /**
+     * CSV 파일을 읽고 파싱합니다.
+     */
+    function loadCsvFile(file, type, fileName) {
+        // CSV 파일 파싱 (EUC-KR 시도 후 실패 시 UTF-8 재시도 포함)
+        Papa.parse(file, {
+            header: true,
+            dynamicTyping: true, 
+            skipEmptyLines: true,
+            encoding: 'EUC-KR', 
+            error: function(err, fileObj, inputElem, reason) {
+                 // 1차 시도 실패 시 UTF-8로 재시도
+                Papa.parse(file, {
+                    header: true,
+                    dynamicTyping: true,
+                    skipEmptyLines: true,
+                    error: function(err) {
+                        showMessage(`파일 로드 오류 (${type}): CSV 형식 또는 인코딩(UTF-8/EUC-KR) 문제를 확인해주세요.`, 'error');
+                        if (type === 'pre') { preData = null; } else { postData = null; }
+                        updateDropAreaUI(type, 'error'); 
+                        checkAnalysisReadiness();
+                    },
+                    complete: function(results) {
+                        processParsedData(results.data, type, fileName);
+                    }
+                });
+            },
+            complete: function(results) {
+                // EUC-KR 성공 시 또는 UTF-8 재시도 성공 시
+                processParsedData(results.data, type, fileName);
+            }
+        });
+    }
+
+    /**
+     * XLSX 파일을 읽고 파싱합니다. (SheetJS 사용)
+     */
+    function loadXlsxFile(file, type, fileName) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                // raw: true로 설정하여 값을 원본 그대로 가져옵니다.
+                const workbook = XLSX.read(data, { type: 'array', raw: true });
+                
+                // 첫 번째 시트의 데이터를 가져옵니다.
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                
+                // 시트의 데이터를 JSON 형식 (Array of Objects)으로 변환합니다.
+                // header: 1로 설정하여 첫 번째 행을 헤더로 사용하고, 결과를 배열의 배열로 가져옵니다.
+                const jsonDataArray = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true });
+
+                if (jsonDataArray.length < 2) {
+                    throw new Error("엑셀 파일이 비어 있거나 유효한 데이터 행이 부족합니다.");
+                }
+
+                const headers = jsonDataArray[0].map(h => String(h).trim()); // 헤더 추출 및 정리
+                const records = [];
+                
+                // 데이터 행을 헤더를 가진 객체 배열로 변환
+                for (let i = 1; i < jsonDataArray.length; i++) {
+                    const row = jsonDataArray[i];
+                    const record = {};
+                    let hasContent = false;
+                    for (let j = 0; j < headers.length && j < row.length; j++) {
+                        // 숫자 및 문자열 값을 그대로 할당 (processParsedData에서 숫자 변환 처리)
+                        const value = row[j];
+                        record[headers[j]] = value;
+                        if (value !== undefined && value !== null && value !== "") {
+                            hasContent = true;
+                        }
+                    }
+                    if (hasContent) {
+                        records.push(record);
+                    }
+                }
+                
+                processParsedData(records, type, fileName);
+
+            } catch (error) {
+                console.error("XLSX parsing error:", error);
+                showMessage(`파일 로드 오류 (${type}): 엑셀 파일을 읽는 데 실패했습니다. (Error: ${error.message})`, 'error');
+                if (type === 'pre') { preData = null; } else { postData = null; }
+                updateDropAreaUI(type, 'error');
+                checkAnalysisReadiness();
+            }
+        };
+
+        reader.onerror = function(error) {
+            console.error("FileReader error:", error);
+            showMessage(`파일 리더 오류 (${type}): 파일을 읽는 중 오류가 발생했습니다.`, 'error');
+            if (type === 'pre') { preData = null; } else { postData = null; }
+            updateDropAreaUI(type, 'error');
+            checkAnalysisReadiness();
+        };
+
+        reader.readAsArrayBuffer(file);
+    }
+
+
+    /**
+     * 파일이 선택되면 데이터를 읽고 저장합니다.
+     * @param {Event} event - 파일 선택 이벤트
+     * @param {string} type - 'pre' 또는 'post'
+     */
+    function handleFileSelect(event, type) {
+        const file = event.target.files[0];
+        if (!file) {
+            updateDropAreaUI(type, 'initial');
+            return;
+        }
+        
+        const fileName = file.name;
+        // 로딩 상태 표시
+        updateDropAreaUI(type, 'initial', fileName); 
+
+        const extension = fileName.split('.').pop().toLowerCase();
+        
+        if (extension === 'csv') {
+            loadCsvFile(file, type, fileName);
+        } else if (extension === 'xlsx' || extension === 'xls') {
+            loadXlsxFile(file, type, fileName);
+        } else {
+            showMessage(`지원하지 않는 파일 형식 (.${extension})입니다. CSV 또는 XLSX 파일을 업로드해주세요.`, 'error');
+            updateDropAreaUI(type, 'error');
+            checkAnalysisReadiness();
+        }
+    }
+
+    /**
+     * 파싱된 데이터를 저장하고 분석 가능 상태를 확인합니다.
+     * @param {Array<Object>} data - 파싱된 데이터 배열
+     * @param {string} type - 'pre' 또는 'post'
+     * @param {string} fileName - 파일 이름
+     */
+    function processParsedData(data, type, fileName) {
+        // 데이터에서 유효한 숫자 값만 추출 (Brainlink 지표만)
+        const cleanedData = data.map(row => {
+            const newRow = {};
+            let hasValidData = false;
+            for (const key in row) {
+                // key가 HEADER_MAP에 정의된 지표 중 하나인지 확인
+                if (HEADER_MAP[key]) {
+                    // PapaParse의 dynamicTyping 덕분에 CSV에서는 이미 숫자로 변환되지만,
+                    // XLSX의 경우 다시 parseFloat을 사용하여 확실히 숫자로 변환합니다.
+                    const value = parseFloat(row[key]); 
+                    
+                    // 유효한 숫자인 경우만 포함
+                    if (!isNaN(value)) {
+                        newRow[key] = value;
+                        hasValidData = true;
+                    }
+                }
+            }
+            return hasValidData ? newRow : null;
+        }).filter(row => row !== null); // 지표 데이터가 하나라도 있는 행만 필터링
+
+        if (cleanedData.length < 2) {
+            // 표본이 2개 미만이면 T-검정이 불가능하므로 오류 처리
+            showMessage(`${type === 'pre' ? '카페인 섭취 전' : '카페인 섭취 후'} 파일에 최소 2개 이상의 유효한 Brainlink 표본 데이터가 필요합니다. 현재 ${cleanedData.length}개 표본.`, 'error');
+            if (type === 'pre') { preData = null; } else { postData = null; }
+            updateDropAreaUI(type, 'error');
+        } else {
+            if (type === 'pre') {
+                preData = cleanedData;
+            } else {
+                postData = cleanedData;
+            }
+            showMessage(`${type === 'pre' ? '카페인 섭취 전' : '카페인 섭취 후'} 파일 로드 완료 (${cleanedData.length}개 표본).`, 'success');
+            updateDropAreaUI(type, 'loaded', fileName);
+        }
+        
+        checkAnalysisReadiness();
+    }
+
+    /**
+     * 분석 버튼의 활성화 상태를 확인합니다.
+     */
+    function checkAnalysisReadiness() {
+        if (preData && postData && preData.length >= 2 && postData.length >= 2) {
+            analyzeButton.disabled = false;
+            analyzeButton.textContent = '통계 분석 및 결과 다운로드';
+        } else {
+            analyzeButton.disabled = true;
+            let message = '두 파일 모두 업로드 및 각 2개 이상 표본 필요';
+            if (preData && preData.length < 2) {
+                message = `Pre 데이터 표본 부족 (${preData.length}개). 최소 2개 이상 필요.`;
+            } else if (postData && postData.length < 2) {
+                message = `Post 데이터 표본 부족 (${postData.length}개). 최소 2개 이상 필요.`;
+            }
+            analyzeButton.textContent = message;
+        }
+        resultsContainer.classList.add('hidden');
+        resultsTableBody.innerHTML = '';
+    }
+
+    // --- 통계 계산 유틸리티 함수 (Independent Two-Sample T-Test) ---
+
+    /**
+     * 데이터 배열의 평균을 계산합니다.
+     * @param {number[]} data
+     * @returns {number} 평균
+     */
+    function calculateMean(data) {
+        if (data.length === 0) return 0;
+        return data.reduce((sum, value) => sum + value, 0) / data.length;
+    }
+
+    /**
+     * 데이터 배열의 표본 분산을 계산합니다 (n-1).
+     * @param {number[]} data
+     * @param {number} mean - 미리 계산된 평균
+     * @returns {number} 분산
+     */
+    function calculateVariance(data, mean) {
+        const n = data.length;
+        if (n <= 1) return 0;
+        const sumOfSquares = data.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0);
+        return sumOfSquares / (n - 1);
+    }
+
+    /**
+     * Welch의 독립 표본 T-검정을 수행합니다. (분산의 동질성 가정 없음)
+     * @param {number[]} dataA - 그룹 A (Pre) 데이터
+     * @param {number[]} dataB - 그룹 B (Post) 데이터
+     * @returns {{tStatistic: number, df: number, pValueApprox: number, meanA: number, meanB: number, sdA: number, sdB: number}} T-검정 결과
+     */
+    function welchTTest(dataA, dataB) {
+        const nA = dataA.length;
+        const nB = dataB.length;
+
+        if (nA < 2 || nB < 2) {
+            return { tStatistic: NaN, df: NaN, pValueApprox: NaN, meanA: NaN, meanB: NaN, sdA: NaN, sdB: NaN };
+        }
+
+        const meanA = calculateMean(dataA);
+        const meanB = calculateMean(dataB);
+        const varA = calculateVariance(dataA, meanA);
+        const varB = calculateVariance(dataB, meanB);
+        
+        const sdA = Math.sqrt(varA);
+        const sdB = Math.sqrt(varB);
+
+        // 표준 오차 (Standard Error) 계산: SE = sqrt( (VarA/nA) + (VarB/nB) )
+        const se = Math.sqrt((varA / nA) + (varB / nB));
+
+        // T-통계량 계산: t = (MeanA - MeanB) / SE
+        const tStatistic = (meanA - meanB) / se;
+
+        // Welch-Satterthwaite 방정식으로 자유도 (Degrees of Freedom) 계산
+        const nuA = varA / nA;
+        const nuB = varB / nB;
+        const dfNumerator = Math.pow(nuA + nuB, 2);
+        const dfDenominator = (Math.pow(nuA, 2) / (nA - 1)) + (Math.pow(nuB, 2) / (nB - 1));
+        const df = dfNumerator / dfDenominator;
+        
+        // P-Value 추정치 (T-분포 함수 없이 단순화된 추정치 제공. 실제 분석은 전문 소프트웨어 권장)
+        let pValueApprox = NaN;
+        if (Math.abs(tStatistic) > 2.5) { 
+             pValueApprox = 0.01;
+        } else if (Math.abs(tStatistic) > 2) { 
+            pValueApprox = 0.05; 
+        } else if (Math.abs(tStatistic) > 1.5) {
+            pValueApprox = 0.1;
+        } else {
+            pValueApprox = 0.5;
+        }
+
+
+        return { 
+            tStatistic, 
+            df: Math.floor(df), 
+            pValueApprox, 
+            meanA, 
+            meanB, 
+            sdA, 
+            sdB 
+        };
+    }
+
+    /**
+     * 통계 분석을 실행하고 결과를 표시/다운로드합니다.
+     */
+    function runAnalysis() {
+        if (!preData || !postData) {
+            showMessage('두 파일이 모두 로드되지 않았습니다.', 'error');
+            return;
+        }
+
+        analyzeButton.disabled = true;
+        analyzeButton.textContent = '분석 중...';
+        showMessage('T-검정을 수행 중입니다...', 'warning');
+
+        const analysisResults = [];
+
+        // 각 Brainlink 지표에 대해 T-검정 수행
+        METRIC_KEYS.forEach(key => {
+            const metricName = HEADER_MAP[key];
+
+            // Pre와 Post 데이터에서 해당 지표의 숫자 배열 추출
+            const preValues = preData.map(row => row[key]).filter(v => typeof v === 'number' && !isNaN(v));
+            const postValues = postData.map(row => row[key]).filter(v => typeof v === 'number' && !isNaN(v));
+
+            if (preValues.length >= 2 && postValues.length >= 2) {
+                const result = welchTTest(preValues, postValues);
+
+                analysisResults.push({
+                    metric: metricName,
+                    ...result
+                });
+            } else {
+                 // 표본 부족으로 분석 불가능 (UI 로드 시 이미 검사되었지만 안전장치)
+                 analysisResults.push({
+                    metric: metricName,
+                    tStatistic: NaN, 
+                    df: NaN, 
+                    pValueApprox: NaN, 
+                    meanA: calculateMean(preValues), 
+                    meanB: calculateMean(postValues), 
+                    sdA: Math.sqrt(calculateVariance(preValues, calculateMean(preValues))), 
+                    sdB: Math.sqrt(calculateVariance(postValues, calculateMean(postValues)))
+                });
+            }
+        });
+
+        // 결과 표시 및 다운로드
+        displayResults(analysisResults);
+        exportToCSV(analysisResults);
+
+        analyzeButton.disabled = false;
+        analyzeButton.textContent = '통계 분석 및 결과 다운로드';
+        showMessage('분석 완료! 결과가 화면에 표시되었으며, CSV 파일이 자동으로 다운로드됩니다.', 'success');
+    }
+
+    /**
+     * 분석 결과를 HTML 테이블에 표시합니다.
+     * @param {Array<Object>} results - T-검정 결과 배열
+     */
+    function displayResults(results) {
+        resultsTableBody.innerHTML = '';
+        
+        results.forEach(res => {
+            const isSignificant = res.pValueApprox < 0.05 && !isNaN(res.pValueApprox);
+            const significanceText = isSignificant ? '유의함 (Significant)' : '유의하지 않음 (Not Significant)';
+            const significanceClass = isSignificant ? 'text-red-600 font-bold' : 'text-gray-500';
+
+            const row = document.createElement('tr');
+            row.className = 'hover:bg-gray-100 transition-colors';
+
+            const format = (num) => isNaN(num) ? 'N/A' : num.toFixed(3);
+            
+            row.innerHTML = `
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${res.metric}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-500">${format(res.meanA)} (SD: ${format(res.sdA)})</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-500">${format(res.meanB)} (SD: ${format(res.sdB)})</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-500">${format(res.tStatistic)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-500">${isNaN(res.df) ? 'N/A' : res.df}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-center ${isSignificant ? 'font-semibold text-red-600' : 'text-gray-500'}">${format(res.pValueApprox)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-center ${significanceClass}">${significanceText}</td>
+            `;
+            resultsTableBody.appendChild(row);
+        });
+
+        resultsContainer.classList.remove('hidden');
+    }
+
+    /**
+     * 분석 결과를 CSV 파일로 내보냅니다.
+     * @param {Array<Object>} results - T-검정 결과 배열
+     */
+    function exportToCSV(results) {
+        const header = [
+            '지표', 'Pre 평균', 'Pre 표준편차 (SD)', 'Post 평균', 'Post 표준편차 (SD)', 
+            'T-통계량', '자유도 (DF)', 'P-Value (추정치)', '유의성 (α=0.05)'
+        ].join(',');
+
+        const rows = results.map(res => {
+            const isSignificant = res.pValueApprox < 0.05 && !isNaN(res.pValueApprox);
+            const significanceText = isSignificant ? '유의함' : '유의하지 않음';
+            const format = (num) => isNaN(num) ? 'N/A' : num.toFixed(4);
+
+            return [
+                res.metric,
+                format(res.meanA),
+                format(res.sdA),
+                format(res.meanB),
+                format(res.sdB),
+                format(res.tStatistic),
+                isNaN(res.df) ? 'N/A' : res.df,
+                format(res.pValueApprox),
+                significanceText
+            ].join(',');
+        });
+
+        const csvContent = header + '\n' + rows.join('\n');
+        
+        // UTF-8 BOM 추가 (Excel에서 한글 깨짐 방지)
+        const BOM = '\ufeff';
+        const finalCsvContent = BOM + csvContent;
+
+        const blob = new Blob([finalCsvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        
+        // 다운로드 실행
+        link.href = URL.createObjectURL(blob);
+        link.download = `Brainlink_T-Test_Results_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+    
+</script>
+
+</body>
+</html>
